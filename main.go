@@ -6,7 +6,9 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	"github.com/fatih/color"
 	flags "github.com/jessevdk/go-flags"
@@ -77,31 +79,41 @@ func copyFiles(from, to string) error {
 			log.Println(color.RedString("^^ file exists.. skipping"))
 			continue
 		}
-		from, err := os.Open(filepath.Join(from, file.Name()))
-		if err != nil {
-			log.Fatal(err)
-			from.Close()
+		if err := copyFile(filepath.Join(from, file.Name()), filepath.Join(to, dirToSaveIn, file.Name()), file.Mode()); err != nil {
 			return err
 		}
-
-		to, err := os.OpenFile(filepath.Join(to, dirToSaveIn, file.Name()), os.O_RDWR|os.O_CREATE, file.Mode())
-		if err != nil {
-			log.Fatal(err)
-			from.Close()
-			to.Close()
-			return err
-		}
-
-		_, err = io.Copy(to, from)
-		if err != nil {
-			from.Close()
-			to.Close()
-			log.Fatal(err)
-			return err
-		}
-		from.Close()
-		to.Close()
 		log.Println(color.GreenString("done"))
 	}
 	return nil
+}
+
+func copyFile(from, to string, mode os.FileMode) error {
+	if runtime.GOOS == `linux` {
+		cpCmd := exec.Command("cp", "-rf", from, to)
+		return cpCmd.Run()
+	} else if runtime.GOOS == `darwin` {
+		cpCmd := exec.Command("ditto", from, to)
+		return cpCmd.Run()
+	} else {
+		fromFile, err := os.Open(from)
+		if err != nil {
+			log.Fatal(err)
+			return err
+		}
+		defer fromFile.Close()
+
+		toFile, err := os.OpenFile(to, os.O_RDWR|os.O_CREATE, mode)
+		if err != nil {
+			log.Fatal(err)
+			return err
+		}
+		defer toFile.Close()
+
+		_, err = io.Copy(toFile, fromFile)
+		if err != nil {
+			log.Fatal(err)
+			return err
+		}
+		return nil
+	}
 }
